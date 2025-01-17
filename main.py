@@ -3,6 +3,10 @@ from fpdf import FPDF
 from io import BytesIO
 from flask_cors import CORS
 import fitz  # PyMuPDF
+import requests
+import pytesseract
+from PIL import Image
+from io import BytesIO as IOBytes
 
 app = Flask(__name__)
 
@@ -11,19 +15,24 @@ CORS(app)
 
 @app.route('/update-pdf', methods=['POST'])
 def update_pdf():
-    numbers = request.json.get('numbers', [])
-    pdf_file = '/path/to/your/pdf.pdf'
-
-    # Carrega o PDF
-    pdf_document = fitz.open(pdf_file)
-    page = pdf_document[0]
-
+    data = request.json
+    pdf_url = data.get('pdf_url')
+    numbers = data.get('numbers', [])
+    
+    # Baixar o PDF da URL
+    pdf_content = requests.get(pdf_url).content
+    pdf_document = fitz.open(stream=pdf_content, filetype="pdf")
+    
+    # Analisar o conteúdo do PDF e encontrar a tabela com os números
+    page = pdf_document[0]  # Analisando a primeira página
+    table_positions = analyze_pdf_for_table(page)  # Função para detectar posições dos números na tabela
+    
     # Adiciona marcadores nos números selecionados
     for number in numbers:
-        rect = get_number_position(number)
-        if rect:
+        if number in table_positions:
+            rect = table_positions[number]
             page.draw_rect(rect, color=(0, 1, 0), fill=(0, 1, 0), width=0)
-
+    
     # Salva o PDF atualizado
     updated_pdf = BytesIO()
     pdf_document.save(updated_pdf)
@@ -33,16 +42,39 @@ def update_pdf():
     # Converte para PNG
     doc = fitz.open(stream=updated_pdf, filetype="pdf")
     pix = doc[0].get_pixmap()
-    png_output = BytesIO(pix.tobytes("png"))
+    png_output = IOBytes(pix.tobytes("png"))
+    
     return send_file(png_output, mimetype='image/png', as_attachment=True, download_name='updated_rifa.png')
 
-def get_number_position(number):
-    # Mapear posições dos números no PDF
-    positions = {
-        1: (50, 50, 100, 100),  # Exemplo: posição no PDF
-        # Adicione todas as outras posições aqui
-    }
-    return positions.get(number)
+def analyze_pdf_for_table(page):
+    """Função para identificar as posições dos números na tabela"""
+    # Usar OCR para tentar identificar a tabela e os números
+    img = page.get_pixmap()
+    img_bytes = img.tobytes("png")
+    
+    # Usando pytesseract para tentar detectar números na imagem
+    img_pil = Image.open(IOBytes(img_bytes))
+    text = pytesseract.image_to_string(img_pil)
+    
+    # Encontrar os números dentro do texto
+    numbers_found = extract_numbers_from_text(text)
+    
+    # Mapear as posições dos números (exemplo heurístico)
+    positions = {}
+    for number in numbers_found:
+        # A lógica para encontrar as posições deve ser ajustada de acordo com a tabela
+        # Por exemplo, procurando números entre 1 e 100
+        if 1 <= int(number) <= 100:
+            positions[int(number)] = (50, 50, 100, 100)  # Exemplo de posição, a ser ajustada
+    return positions
+
+def extract_numbers_from_text(text):
+    """Extrair números da string obtida pelo OCR"""
+    numbers = []
+    for word in text.split():
+        if word.isdigit():
+            numbers.append(word)
+    return numbers
 
 if __name__ == '__main__':
     app.run(debug=True)

@@ -1,71 +1,63 @@
-from flask import Flask, request, send_file
-from fpdf import FPDF
-from io import BytesIO
-from flask_cors import CORS
+import os
+from flask import Flask, request, send_file, jsonify
 import fitz  # PyMuPDF
-import requests
-import pytesseract
-from PIL import Image
-from io import BytesIO as IOBytes
+from io import BytesIO
 
 app = Flask(__name__)
-CORS(app)
+
+# Caminho do arquivo PDF no mesmo diretório do script
+PDF_FILE_PATH = os.path.join(os.path.dirname(__file__), "rifa.pdf")
 
 @app.route('/update-pdf', methods=['POST'])
 def update_pdf():
     data = request.json
-    pdf_url = data.get('pdf_url')
     numbers = data.get('numbers', [])
     
-    # Baixar o PDF da URL
-    pdf_content = requests.get(pdf_url).content
-    pdf_document = fitz.open(stream=pdf_content, filetype="pdf")
-    
-    # Analisar o PDF para identificar a tabela
-    page = pdf_document[0]
-    table_positions = analyze_pdf_for_table(page)
+    # Verificar se o arquivo PDF existe
+    if not os.path.exists(PDF_FILE_PATH):
+        return jsonify({"error": "O arquivo rifa.pdf não foi encontrado"}), 404
 
-    # Marcar os números selecionados
-    for number in numbers:
-        if number in table_positions:
-            rect = table_positions[number]
-            page.draw_rect(rect, color=(0, 1, 0), fill=(0, 1, 0), width=0)
-    
-    # Salvar PDF atualizado
-    updated_pdf = BytesIO()
-    pdf_document.save(updated_pdf)
-    pdf_document.close()
-    updated_pdf.seek(0)
-
-    # Converter PDF para PNG
     try:
+        # Abrir o PDF localmente
+        pdf_document = fitz.open(PDF_FILE_PATH)
+
+        # Processar a primeira página
+        page = pdf_document[0]
+
+        # Exemplo de posições (ajustar conforme a lógica do seu layout)
+        table_positions = analyze_pdf_for_table(page)
+
+        # Marcar os números selecionados
+        for number in numbers:
+            if number in table_positions:
+                rect = table_positions[number]
+                page.draw_rect(rect, color=(0, 1, 0), fill=(0, 1, 0), width=0)
+
+        # Salvar PDF atualizado em memória
+        updated_pdf = BytesIO()
+        pdf_document.save(updated_pdf)
+        pdf_document.close()
+        updated_pdf.seek(0)
+
+        # Converter PDF para PNG
         doc = fitz.open(stream=updated_pdf, filetype="pdf")
         pix = doc[0].get_pixmap()
         png_output = BytesIO()
-        pix.save(png_output, format="png")  # Salvar diretamente como PNG
+        pix.save(png_output, format="png")
         png_output.seek(0)
+
         return send_file(png_output, mimetype='image/png', as_attachment=True, download_name='updated_rifa.png')
+
     except Exception as e:
-        return jsonify({"error": f"Falha ao converter para PNG: {str(e)}"}), 500
+        return jsonify({"error": f"Erro ao processar o PDF: {str(e)}"}), 500
+
 
 def analyze_pdf_for_table(page):
-    """Identifica posições dos números na tabela"""
-    img = page.get_pixmap()
-    img_bytes = img.tobytes("png")
-    
-    img_pil = Image.open(IOBytes(img_bytes))
-    text = pytesseract.image_to_string(img_pil)
-    
-    numbers_found = extract_numbers_from_text(text)
-    positions = {}
-    for number in numbers_found:
-        if 1 <= int(number) <= 100:
-            positions[int(number)] = (50, 50, 100, 100)  # Exemplo: ajustar para o layout do PDF
+    """Exemplo: lógica para identificar as posições dos números"""
+    # Exemplo de posições fictícias para os números
+    positions = {i: fitz.Rect(50 * (i % 10), 50 * (i // 10), 50 * (i % 10 + 1), 50 * (i // 10 + 1)) for i in range(1, 101)}
     return positions
 
-def extract_numbers_from_text(text):
-    """Extrai números do texto"""
-    return [int(word) for word in text.split() if word.isdigit()]
 
 if __name__ == '__main__':
     app.run(debug=True)

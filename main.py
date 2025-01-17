@@ -1,9 +1,13 @@
 from flask import Flask, request, send_file
 from fpdf import FPDF
 from io import BytesIO
+from flask_cors import CORS
 import fitz  # PyMuPDF
 
 app = Flask(__name__)
+
+# Habilitando CORS para todas as rotas
+CORS(app)
 
 @app.route('/update-pdf', methods=['POST'])
 def update_pdf():

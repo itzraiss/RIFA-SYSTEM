@@ -4,3 +4,4 @@ gunicorn
 fpdf
 flask-cors
 requests
+pytesseract

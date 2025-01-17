@@ -9,8 +9,6 @@ from PIL import Image
 from io import BytesIO as IOBytes
 
 app = Flask(__name__)
-
-# Habilitando CORS para todas as rotas
 CORS(app)
 
 @app.route('/update-pdf', methods=['POST'])
@@ -23,23 +21,23 @@ def update_pdf():
     pdf_content = requests.get(pdf_url).content
     pdf_document = fitz.open(stream=pdf_content, filetype="pdf")
     
-    # Analisar o conteúdo do PDF e encontrar a tabela com os números
-    page = pdf_document[0]  # Analisando a primeira página
-    table_positions = analyze_pdf_for_table(page)  # Função para detectar posições dos números na tabela
-    
-    # Adiciona marcadores nos números selecionados
+    # Analisar o PDF para identificar a tabela
+    page = pdf_document[0]
+    table_positions = analyze_pdf_for_table(page)
+
+    # Marcar os números selecionados
     for number in numbers:
         if number in table_positions:
             rect = table_positions[number]
             page.draw_rect(rect, color=(0, 1, 0), fill=(0, 1, 0), width=0)
     
-    # Salva o PDF atualizado
+    # Salvar PDF atualizado
     updated_pdf = BytesIO()
     pdf_document.save(updated_pdf)
     pdf_document.close()
     updated_pdf.seek(0)
 
-    # Converte para PNG
+    # Converter PDF para PNG
     doc = fitz.open(stream=updated_pdf, filetype="pdf")
     pix = doc[0].get_pixmap()
     png_output = IOBytes(pix.tobytes("png"))
@@ -47,34 +45,23 @@ def update_pdf():
     return send_file(png_output, mimetype='image/png', as_attachment=True, download_name='updated_rifa.png')
 
 def analyze_pdf_for_table(page):
-    """Função para identificar as posições dos números na tabela"""
-    # Usar OCR para tentar identificar a tabela e os números
+    """Identifica posições dos números na tabela"""
     img = page.get_pixmap()
     img_bytes = img.tobytes("png")
     
-    # Usando pytesseract para tentar detectar números na imagem
     img_pil = Image.open(IOBytes(img_bytes))
     text = pytesseract.image_to_string(img_pil)
     
-    # Encontrar os números dentro do texto
     numbers_found = extract_numbers_from_text(text)
-    
-    # Mapear as posições dos números (exemplo heurístico)
     positions = {}
     for number in numbers_found:
-        # A lógica para encontrar as posições deve ser ajustada de acordo com a tabela
-        # Por exemplo, procurando números entre 1 e 100
         if 1 <= int(number) <= 100:
-            positions[int(number)] = (50, 50, 100, 100)  # Exemplo de posição, a ser ajustada
+            positions[int(number)] = (50, 50, 100, 100)  # Exemplo: ajustar para o layout do PDF
     return positions
 
 def extract_numbers_from_text(text):
-    """Extrair números da string obtida pelo OCR"""
-    numbers = []
-    for word in text.split():
-        if word.isdigit():
-            numbers.append(word)
-    return numbers
+    """Extrai números do texto"""
+    return [int(word) for word in text.split() if word.isdigit()]
 
 if __name__ == '__main__':
     app.run(debug=True)

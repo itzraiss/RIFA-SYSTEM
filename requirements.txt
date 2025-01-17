@@ -2,3 +2,4 @@ Flask
 PyMuPDF
 gunicorn
 fpdf
+flask-cors

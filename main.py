@@ -2,6 +2,7 @@ import os
 from flask import Flask, request, send_file, jsonify
 import fitz  # PyMuPDF
 from io import BytesIO
+import logging
 
 app = Flask(__name__)
 

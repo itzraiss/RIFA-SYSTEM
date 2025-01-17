@@ -38,11 +38,15 @@ def update_pdf():
     updated_pdf.seek(0)
 
     # Converter PDF para PNG
-    doc = fitz.open(stream=updated_pdf, filetype="pdf")
-    pix = doc[0].get_pixmap()
-    png_output = IOBytes(pix.tobytes("png"))
-    
-    return send_file(png_output, mimetype='image/png', as_attachment=True, download_name='updated_rifa.png')
+    try:
+        doc = fitz.open(stream=updated_pdf, filetype="pdf")
+        pix = doc[0].get_pixmap()
+        png_output = BytesIO()
+        pix.save(png_output, format="png")  # Salvar diretamente como PNG
+        png_output.seek(0)
+        return send_file(png_output, mimetype='image/png', as_attachment=True, download_name='updated_rifa.png')
+    except Exception as e:
+        return jsonify({"error": f"Falha ao converter para PNG: {str(e)}"}), 500
 
 def analyze_pdf_for_table(page):
     """Identifica posições dos números na tabela"""

@@ -8,7 +8,7 @@ import logging
 app = Flask(__name__)
 CORS(app)  # Habilitar CORS para permitir requisições de outros domínios
 
-PDF_FILE_PATH = os.path.join(os.path.dirname(__file__), "Story Instagram Rifa Solidária Moderno Azul.pdf")
+PDF_FILE_PATH = os.path.join(os.path.dirname(__file__), "rifa.pdf")
 
 @app.route('/update-pdf', methods=['POST'])
 def update_pdf():

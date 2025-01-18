@@ -1,20 +1,81 @@
 import os
-from flask import Flask, request, send_file, jsonify
+from flask import Flask, request, jsonify, send_file
 import fitz  # PyMuPDF
 from io import BytesIO
 from flask_cors import CORS
-import logging
+import pymysql
 
 app = Flask(__name__)
 CORS(app)  # Habilitar CORS para permitir requisições de outros domínios
 
+# Configuração do banco de dados MySQL
+DB_CONFIG = {
+    "host": "sql200.infinityfree.com",
+    "user": "if0_38125220",
+    "password": "Ug1dNiACRx",  # Substitua pela senha real
+    "database": "if0_38125220_XXX",
+}
+
 PDF_FILE_PATH = os.path.join(os.path.dirname(__file__), "rifa.pdf")
+
+
+def get_db_connection():
+    """Cria uma conexão com o banco de dados."""
+    return pymysql.connect(**DB_CONFIG)
+
+
+@app.route('/get-reservations', methods=['GET'])
+def get_reservations():
+    """Retorna todos os números marcados e seus respectivos nomes."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT number, name FROM reservations")
+        data = cursor.fetchall()
+        conn.close()
+
+        # Converter para um formato JSON
+        reservations = {str(number): name for number, name in data}
+        return jsonify(reservations)
+
+    except Exception as e:
+        return jsonify({"error": f"Erro ao buscar reservas: {str(e)}"}), 500
+
+
+@app.route('/save-reservations', methods=['POST'])
+def save_reservations():
+    """Salva os números e nomes no banco de dados."""
+    try:
+        data = request.json
+        reservations = data.get('reservations', {})
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Salvar ou atualizar reservas
+        for number, name in reservations.items():
+            cursor.execute(
+                "INSERT INTO reservations (number, name) VALUES (%s, %s) "
+                "ON DUPLICATE KEY UPDATE name = VALUES(name)",
+                (number, name),
+            )
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({"message": "Reservas salvas com sucesso"})
+
+    except Exception as e:
+        return jsonify({"error": f"Erro ao salvar reservas: {str(e)}"}), 500
+
 
 @app.route('/update-pdf', methods=['POST'])
 def update_pdf():
+    """Atualiza o PDF com os números marcados."""
     try:
         data = request.json
         numbers = data.get('numbers', [])
+
         if not os.path.exists(PDF_FILE_PATH):
             return jsonify({"error": "O arquivo PDF não foi encontrado"}), 404
 

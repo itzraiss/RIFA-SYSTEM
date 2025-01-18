@@ -10,7 +10,7 @@ app = Flask(__name__)
 # Configuração do banco de dados
 db_config = {
     'user': 'if0_38125220',
-    'password': 'SUA_SENHA',
+    'password': 'Ug1dNiACRx',
     'host': 'sql200.infinityfree.com',
     'database': 'if0_38125220_XXX'
 }

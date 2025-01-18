@@ -5,3 +5,4 @@ fpdf
 flask-cors
 requests
 pytesseract
+pymysql

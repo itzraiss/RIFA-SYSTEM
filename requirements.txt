@@ -6,3 +6,4 @@ flask-cors
 requests
 pytesseract
 pymysql
+mysql-connector-python

@@ -1,89 +1,43 @@
 import os
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, send_file, jsonify
 import fitz  # PyMuPDF
 from io import BytesIO
-from flask_cors import CORS
-import pymysql
+import mysql.connector
+import logging
 
 app = Flask(__name__)
-CORS(app)  # Habilitar CORS para permitir requisições de outros domínios
 
-# Configuração do banco de dados MySQL
-DB_CONFIG = {
-    "host": "sql200.infinityfree.com",
-    "user": "if0_38125220",
-    "password": "Ug1dNiACRx",  # Substitua pela senha real
-    "database": "if0_38125220_XXX",
+# Configuração do banco de dados
+db_config = {
+    'user': 'if0_38125220',
+    'password': 'SUA_SENHA',
+    'host': 'sql200.infinityfree.com',
+    'database': 'if0_38125220_XXX'
 }
 
+# Caminho do arquivo PDF no mesmo diretório do script
 PDF_FILE_PATH = os.path.join(os.path.dirname(__file__), "rifa.pdf")
 
-
-def get_db_connection():
-    """Cria uma conexão com o banco de dados."""
-    return pymysql.connect(**DB_CONFIG)
-
-
-@app.route('/get-reservations', methods=['GET'])
-def get_reservations():
-    """Retorna todos os números marcados e seus respectivos nomes."""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT number, name FROM reservations")
-        data = cursor.fetchall()
-        conn.close()
-
-        # Converter para um formato JSON
-        reservations = {str(number): name for number, name in data}
-        return jsonify(reservations)
-
-    except Exception as e:
-        return jsonify({"error": f"Erro ao buscar reservas: {str(e)}"}), 500
-
-
-@app.route('/save-reservations', methods=['POST'])
-def save_reservations():
-    """Salva os números e nomes no banco de dados."""
-    try:
-        data = request.json
-        reservations = data.get('reservations', {})
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        # Salvar ou atualizar reservas
-        for number, name in reservations.items():
-            cursor.execute(
-                "INSERT INTO reservations (number, name) VALUES (%s, %s) "
-                "ON DUPLICATE KEY UPDATE name = VALUES(name)",
-                (number, name),
-            )
-
-        conn.commit()
-        conn.close()
-
-        return jsonify({"message": "Reservas salvas com sucesso"})
-
-    except Exception as e:
-        return jsonify({"error": f"Erro ao salvar reservas: {str(e)}"}), 500
-
+print("Arquivo PDF encontrado:", os.path.exists(PDF_FILE_PATH))
 
 @app.route('/update-pdf', methods=['POST'])
 def update_pdf():
-    """Atualiza o PDF com os números marcados."""
     try:
+        logging.info("Recebendo requisição para atualizar PDF")
         data = request.json
         numbers = data.get('numbers', [])
+        logging.info(f"Números recebidos: {numbers}")
 
         if not os.path.exists(PDF_FILE_PATH):
-            return jsonify({"error": "O arquivo PDF não foi encontrado"}), 404
+            logging.error("Arquivo rifa.pdf não encontrado")
+            return jsonify({"error": "O arquivo rifa.pdf não foi encontrado"}), 404
 
         pdf_document = fitz.open(PDF_FILE_PATH)
+        logging.info("PDF carregado com sucesso")
         page = pdf_document[0]
 
-        # Ajustar posições com base no layout do PDF
         table_positions = analyze_pdf_for_table(page)
+        logging.info(f"Posições da tabela identificadas: {table_positions}")
 
         for number in numbers:
             if number in table_positions:
@@ -94,35 +48,51 @@ def update_pdf():
         pdf_document.save(updated_pdf)
         pdf_document.close()
         updated_pdf.seek(0)
+        logging.info("PDF atualizado salvo em memória")
 
-        # Converter PDF para PNG
         doc = fitz.open(stream=updated_pdf, filetype="pdf")
         pix = doc[0].get_pixmap()
         png_output = BytesIO()
         pix.save(png_output, format="png")
         png_output.seek(0)
+        logging.info("PNG gerado com sucesso")
 
         return send_file(png_output, mimetype='image/png', as_attachment=True, download_name='updated_rifa.png')
 
     except Exception as e:
+        logging.error(f"Erro ao processar o PDF: {str(e)}")
         return jsonify({"error": f"Erro ao processar o PDF: {str(e)}"}), 500
 
 
+@app.route('/reservations', methods=['GET'])
+def get_reservations():
+    conn = mysql.connector.connect(**db_config)
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM reservations")
+    reservations = cursor.fetchall()
+    conn.close()
+    return jsonify(reservations)
+
+
+@app.route('/reservations', methods=['POST'])
+def save_reservation():
+    data = request.json
+    conn = mysql.connector.connect(**db_config)
+    cursor = conn.cursor()
+    for number, name in data.items():
+        cursor.execute(
+            "REPLACE INTO reservations (number, name) VALUES (%s, %s)",
+            (number, name)
+        )
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "success"})
+
+
 def analyze_pdf_for_table(page):
-    """Ajuste as coordenadas com base no layout real do PDF."""
-    positions = {}
-    start_x, start_y = 50, 100  # Coordenadas iniciais
-    box_width, box_height = 50, 50  # Tamanho de cada número
-    for i in range(1, 101):
-        col = (i - 1) % 10
-        row = (i - 1) // 10
-        x0 = start_x + col * box_width
-        y0 = start_y + row * box_height
-        x1 = x0 + box_width
-        y1 = y0 + box_height
-        positions[i] = fitz.Rect(x0, y0, x1, y1)
+    positions = {i: fitz.Rect(50 * (i % 10), 50 * (i // 10), 50 * (i % 10 + 1), 50 * (i // 10 + 1)) for i in range(1, 101)}
     return positions
 
 
 if __name__ == '__main__':
-    app.run(debug=True, host="0.0.0.0")
+    app.run(debug=True)
